@@ -25,6 +25,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.security.GeneralSecurityException;
 import java.util.*;
+import java.util.logging.LogManager;
 import java.util.logging.Logger;
 
 @Component
@@ -43,6 +44,16 @@ public class GoogleApiUtil {
      */
     private static final List<String> SCOPES = Arrays.asList(SheetsScopes.SPREADSHEETS, SheetsScopes.DRIVE);
     private static final String CREDENTIALS_FILE_PATH = "/credentials.json";
+
+    static {
+        try {
+            LogManager.getLogManager().readConfiguration(
+                    GoogleApiUtil.class.getClassLoader().getResourceAsStream("logging.properties")
+            );
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     /**
      * Creates an authorized Credential object.
@@ -65,27 +76,33 @@ public class GoogleApiUtil {
         GoogleAuthorizationCodeFlow flow = new GoogleAuthorizationCodeFlow.Builder(
                 HTTP_TRANSPORT, JSON_FACTORY, clientSecrets, SCOPES)
                 .setDataStoreFactory(new FileDataStoreFactory(
-                        new java.io.File(System.getProperty("user.home"), TOKENS_DIRECTORY_PATH)))
+//                        new java.io.File(System.getProperty("user.home"), TOKENS_DIRECTORY_PATH)))
+                        new java.io.File(TOKENS_DIRECTORY_PATH)))
                 .setAccessType("offline")
                 .build();
         LocalServerReceiver receiver = new LocalServerReceiver.Builder().setPort(8888).build();
         return new AuthorizationCodeInstalledApp(flow, receiver).authorize("user");
     }
 
-    public Map<Object, Object> getDataFromSheet() throws GeneralSecurityException, IOException {
-        // Build a new authorized API client service.
-        final String spreadsheetId = "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms";
-        final String range = "Class Data!A2:F";
-        Sheets service = getSheetService();
-        ValueRange response = service.spreadsheets().values().get(spreadsheetId, range).execute();
-        List<List<Object>> values = response.getValues();
-        Map<Object, Object> storeDataFromGoogleSheet = new HashMap<>();
-        if (values == null || values.isEmpty()) {
-            System.out.println("No data found.");
-        } else {
-            for (List row : values) {
-                storeDataFromGoogleSheet.put(row.get(0), row.get(5));
+    public Map<Object, Object> getDataFromSheet(String spreadsheetId, String range){
+        Map<Object, Object> storeDataFromGoogleSheet = null;
+        try {
+            Sheets service = getSheetService();
+            // https://sheets.googleapis.com/v4/spreadsheets/{spreadsheetId}/values/{range}
+            ValueRange response = service.spreadsheets().values().get(spreadsheetId, range).execute();
+            List<List<Object>> values = response.getValues();
+            storeDataFromGoogleSheet = new HashMap<>();
+            if (values == null || values.isEmpty()) {
+                LOGGER.info("No data found.");
+                throw new RuntimeException("No data found.");
+            } else {
+                for (List row : values) {
+                    storeDataFromGoogleSheet.put(row.get(0), row.get(5));
+                }
             }
+        }catch (Exception e){
+            LOGGER.info("Error getting data from Google Sheets API");
+            throw new RuntimeException("Error getting data from Google Sheets API: " + e.getMessage());
         }
         return storeDataFromGoogleSheet;
     }
@@ -128,12 +145,6 @@ public class GoogleApiUtil {
             // add data to sheet
             writeSheet(service, request.getDataToBeUpdated(),"A1", createdResponse.getSpreadsheetId());
 
-//            ValueRange valueRange = new ValueRange().setValues(request.getDataToBeUpdated());
-//            service.spreadsheets().values()
-//                    .update(createdResponse.getSpreadsheetId(), "A1", valueRange)
-//                    .setValueInputOption("RAW")  // RAW là dạng string k phải kiểu tính ví dụ như = 1 + 2 là string không cộng nhu USER_ENTERED
-//                    .execute();
-
             googleSheetResponseDTO = new GoogleSheetResponseDTO();
             googleSheetResponseDTO.setSpreadSheetId(createdResponse.getSpreadsheetId());
             googleSheetResponseDTO.setSpeadSheetUrl(createdResponse.getSpreadsheetUrl());
@@ -171,13 +182,11 @@ public class GoogleApiUtil {
         return googleSheetResponseDTO;
     }
 
+    // Thêm một sheet mới vào Google Sheet hiện có.
     public void createNewSheet(String existingSpreadSheetID, String newSheetTitle)
             throws IOException, GeneralSecurityException {
-        final NetHttpTransport httpTransport = GoogleNetHttpTransport.newTrustedTransport();
-        Sheets service = new Sheets.Builder(httpTransport, JSON_FACTORY, getCredentials(httpTransport))
-                .setApplicationName(APPLICATION_NAME).build();
+        Sheets service = getSheetService();
 
-        Sheets.Spreadsheets spreadsheet = service.spreadsheets();
         // Create a new AddSheetRequest
         AddSheetRequest addSheetRequest = new AddSheetRequest();
         SheetProperties sheetProperties = new SheetProperties();
@@ -203,7 +212,7 @@ public class GoogleApiUtil {
         batchUpdateSpreadsheetRequest.setRequests(requestsList);
 
         // Call the sheets API to execute the batchUpdate
-          spreadsheet.batchUpdate(existingSpreadSheetID, batchUpdateSpreadsheetRequest).execute();
+        service.spreadsheets().batchUpdate(existingSpreadSheetID, batchUpdateSpreadsheetRequest).execute();
     }
 
     public static void writeSheet(Sheets sheets, List<List<Object>> inputData, String sheetAndRange, String existingSpreadSheetID)
@@ -215,23 +224,28 @@ public class GoogleApiUtil {
 
         UpdateValuesResponse result = sheets.spreadsheets().values()
                 .update(existingSpreadSheetID, sheetAndRange, body)
-                .setValueInputOption("RAW")
+                .setValueInputOption("RAW") // RAW là dạng string k phải kiểu tính ví dụ như = 1 + 2 là string không cộng nhu USER_ENTERED
                 .execute();
 
-        System.out.printf("%d cells updated.\n", result.getUpdatedCells());
+        LOGGER.info("Cells updated: "  + result.getUpdatedCells());
     }
 
     public static void writeDataGoogleSheets(Sheets sheets, String sheetName, List<Object> data, String existingSpreadSheetID) throws IOException {
+       // lấy số hành hiện có
         int nextRow = getRows(sheets, sheetName, existingSpreadSheetID) + 1;
         List<List<Object>> values = Arrays.asList(data);
+
+        // ghi dữ liệu vào cột A (!A + nextRow), tức là bắt đầu từ cột A và dòng tiếp theo.
         writeSheet(sheets , values, "!A" + nextRow, existingSpreadSheetID);
     }
 
     public static int getRows(Sheets sheets, String sheetName, String existingSpreadSheetID) throws IOException {
+        // Lấy danh sách dữ liệu từ sheet có tên sheetName trong Google Spreadsheet existingSpreadSheetID
         List<List<Object>> values = sheets.spreadsheets().values().get(existingSpreadSheetID, sheetName)
                 .execute().getValues();
+        // Nếu có dữ liệu, trả về số hàng (numRows), nếu không, trả về 0.
         int numRows = values != null ? values.size() : 0;
-        System.out.printf("%d rows retrieved in \"%s\"\n", numRows, sheetName);
+        LOGGER.info("rows "+ numRows + ", with sheetName: " + sheetName);
         return numRows;
     }
 
@@ -266,9 +280,9 @@ public class GoogleApiUtil {
             }
         }
 
-        GoogleApiUtil googleApiUtil = new GoogleApiUtil();
-        googleApiUtil.createNewSheet("","Sheet 2");
-
-        writeDataGoogleSheets(service,"Sheet 3", new ArrayList<>(Arrays.asList("Test1", "Test2", "Test3")),"");
+//        GoogleApiUtil googleApiUtil = new GoogleApiUtil();
+//        googleApiUtil.createNewSheet("","Sheet 2");
+          // ghi dữ liệu vào sheet đã có data
+//        writeDataGoogleSheets(service,"Sheet 3", new ArrayList<>(Arrays.asList("Test1", "Test2", "Test3")),"");
     }
 }
