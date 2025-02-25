@@ -4,6 +4,7 @@ package com.GoogleSheetAPI.util;
 import com.GoogleSheetAPI.dto.GoogleSheetDTO;
 import com.GoogleSheetAPI.dto.GoogleSheetResponseDTO;
 import com.google.api.client.auth.oauth2.Credential;
+import com.google.api.client.auth.oauth2.StoredCredential;
 import com.google.api.client.extensions.java6.auth.oauth2.AuthorizationCodeInstalledApp;
 import com.google.api.client.extensions.jetty.auth.oauth2.LocalServerReceiver;
 import com.google.api.client.googleapis.auth.oauth2.GoogleAuthorizationCodeFlow;
@@ -14,15 +15,14 @@ import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.gson.GsonFactory;
+import com.google.api.client.util.store.DataStore;
 import com.google.api.client.util.store.FileDataStoreFactory;
 import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.SheetsScopes;
 import com.google.api.services.sheets.v4.model.*;
 import org.springframework.stereotype.Component;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+
+import java.io.*;
 import java.security.GeneralSecurityException;
 import java.util.*;
 import java.util.logging.LogManager;
@@ -79,8 +79,38 @@ public class GoogleApiUtil {
 //                        new java.io.File(System.getProperty("user.home"), TOKENS_DIRECTORY_PATH)))
                         new java.io.File(TOKENS_DIRECTORY_PATH)))
                 .setAccessType("offline")
+                .setApprovalPrompt("force")
                 .build();
         LocalServerReceiver receiver = new LocalServerReceiver.Builder().setPort(8888).build();
+
+        FileDataStoreFactory dataStoreFactory = new FileDataStoreFactory(new File(TOKENS_DIRECTORY_PATH));
+        DataStore<StoredCredential> dataStore = dataStoreFactory.getDataStore("StoredCredential");
+
+        // Lấy Credential từ bộ nhớ
+        StoredCredential storedCredential = dataStore.get("user");
+        if (storedCredential.getRefreshToken() == null) {
+             storedCredential.getRefreshToken(); // ✅ Lấy lại refreshToken đã lưu
+            Credential credential = new AuthorizationCodeInstalledApp(flow, receiver).authorize("user");
+            System.out.println(credential);
+        }
+
+//        CustomAuthorizationApp authApp = new CustomAuthorizationApp(flow, receiver);
+//        authApp.authorize("user");
+
+//        if (authApp.authorize("user").getRefreshToken() == null) {
+//            // Nếu không có refresh_token, cần yêu cầu OAuth URL mới
+//            String oauthUrl = flow.newAuthorizationUrl()
+//                    .setRedirectUri("http://localhost:8888/Callback")
+//                    .build();
+//            System.out.println("OAuth URL cần xác thực lại: " + oauthUrl);
+//        } else {
+//            System.out.println("RefreshToken: " + authApp.authorize("user").getRefreshToken());
+//            System.out.println("Times: " + authApp.authorize("user").getExpiresInSeconds());
+//        }
+
+
+        // Nếu chưa có token trong thư mục TOKENS_DIRECTORY_PATH, chương trình sẽ hiển thị OAuth URL để bạn xác thực.
+        // Nếu đã có token, nó sẽ tải token từ bộ nhớ và kiểm tra hạn sử dụng. flow.loadCredential("user")
         return new AuthorizationCodeInstalledApp(flow, receiver).authorize("user");
     }
 
@@ -259,28 +289,30 @@ public class GoogleApiUtil {
      */
     public static void main(String... args) throws IOException, GeneralSecurityException {
         // Build a new authorized API client service.
-        final NetHttpTransport HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
-        final String spreadsheetId = "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms";
-        final String range = "Class Data!A2:E";
-        Sheets service =
-                new Sheets.Builder(HTTP_TRANSPORT, JSON_FACTORY, getCredentials(HTTP_TRANSPORT))
-                        .setApplicationName(APPLICATION_NAME)
-                        .build();
-        ValueRange response = service.spreadsheets().values()
-                .get(spreadsheetId, range)
-                .execute();
-        List<List<Object>> values = response.getValues();
-        if (values == null || values.isEmpty()) {
-            System.out.println("No data found.");
-        } else {
-            System.out.println("Name, Major");
-            for (List row : values) {
-                // Print columns A and E, which correspond to indices 0 and 4.
-                System.out.printf("%s, %s\n", row.get(0), row.get(4));
-            }
-        }
+//        final NetHttpTransport HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
+//        final String spreadsheetId = "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms";
+//        final String range = "Class Data!A2:E";
+//        Sheets service =
+//                new Sheets.Builder(HTTP_TRANSPORT, JSON_FACTORY, getCredentials(HTTP_TRANSPORT))
+//                        .setApplicationName(APPLICATION_NAME)
+//                        .build();
+//        ValueRange response = service.spreadsheets().values()
+//                .get(spreadsheetId, range)
+//                .execute();
+//        List<List<Object>> values = response.getValues();
+//        if (values == null || values.isEmpty()) {
+//            System.out.println("No data found.");
+//        } else {
+//            System.out.println("Name, Major");
+//            for (List row : values) {
+//                // Print columns A and E, which correspond to indices 0 and 4.
+//                System.out.printf("%s, %s\n", row.get(0), row.get(4));
+//            }
+//        }
 
-//        GoogleApiUtil googleApiUtil = new GoogleApiUtil();
+
+        GoogleApiUtil googleApiUtil = new GoogleApiUtil();
+        googleApiUtil.getDataFromSheet("1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms","Class Data!A2:F15");
 //        googleApiUtil.createNewSheet("","Sheet 2");
           // ghi dữ liệu vào sheet đã có data
 //        writeDataGoogleSheets(service,"Sheet 3", new ArrayList<>(Arrays.asList("Test1", "Test2", "Test3")),"");
