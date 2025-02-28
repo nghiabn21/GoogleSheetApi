@@ -3,6 +3,7 @@ package com.GoogleSheetAPI.util;
 
 import com.GoogleSheetAPI.dto.GoogleSheetDTO;
 import com.GoogleSheetAPI.dto.GoogleSheetResponseDTO;
+import com.GoogleSheetAPI.entity.PersonInfo;
 import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.auth.oauth2.StoredCredential;
 import com.google.api.client.extensions.java6.auth.oauth2.AuthorizationCodeInstalledApp;
@@ -88,25 +89,12 @@ public class GoogleApiUtil {
 
         // Lấy Credential từ bộ nhớ
         StoredCredential storedCredential = dataStore.get("user");
-        if (storedCredential.getRefreshToken() == null) {
-             storedCredential.getRefreshToken(); // ✅ Lấy lại refreshToken đã lưu
-            Credential credential = new AuthorizationCodeInstalledApp(flow, receiver).authorize("user");
-            System.out.println(credential);
+        if (storedCredential != null) {
+//            Credential credential = new AuthorizationCodeInstalledApp(flow, receiver).authorize("user");
+            System.out.println("Token create: " + storedCredential.getRefreshToken());
+        }else {
+            System.out.println("Token is null " );
         }
-
-//        CustomAuthorizationApp authApp = new CustomAuthorizationApp(flow, receiver);
-//        authApp.authorize("user");
-
-//        if (authApp.authorize("user").getRefreshToken() == null) {
-//            // Nếu không có refresh_token, cần yêu cầu OAuth URL mới
-//            String oauthUrl = flow.newAuthorizationUrl()
-//                    .setRedirectUri("http://localhost:8888/Callback")
-//                    .build();
-//            System.out.println("OAuth URL cần xác thực lại: " + oauthUrl);
-//        } else {
-//            System.out.println("RefreshToken: " + authApp.authorize("user").getRefreshToken());
-//            System.out.println("Times: " + authApp.authorize("user").getExpiresInSeconds());
-//        }
 
 
         // Nếu chưa có token trong thư mục TOKENS_DIRECTORY_PATH, chương trình sẽ hiển thị OAuth URL để bạn xác thực.
@@ -114,8 +102,9 @@ public class GoogleApiUtil {
         return new AuthorizationCodeInstalledApp(flow, receiver).authorize("user");
     }
 
-    public Map<Object, Object> getDataFromSheet(String spreadsheetId, String range){
+    public List<PersonInfo> getDataFromSheet(String spreadsheetId, String range){
         Map<Object, Object> storeDataFromGoogleSheet = null;
+        List<PersonInfo> personInfos = new ArrayList<>();
         try {
             Sheets service = getSheetService();
             // https://sheets.googleapis.com/v4/spreadsheets/{spreadsheetId}/values/{range}
@@ -127,14 +116,20 @@ public class GoogleApiUtil {
                 throw new RuntimeException("No data found.");
             } else {
                 for (List row : values) {
-                    storeDataFromGoogleSheet.put(row.get(0), row.get(5));
+                    PersonInfo personInfo = PersonInfo.builder()
+                            .name((String) row.get(0))
+                            .phone((String)row.get(1))
+                            .email((String)row.get(2))
+                            .address((String)row.get(3))
+                            .build();
+                    personInfos.add(personInfo);
                 }
             }
         }catch (Exception e){
             LOGGER.info("Error getting data from Google Sheets API");
             throw new RuntimeException("Error getting data from Google Sheets API: " + e.getMessage());
         }
-        return storeDataFromGoogleSheet;
+        return personInfos;
     }
 
     private Sheets getSheetService() throws GeneralSecurityException, IOException {
@@ -288,28 +283,6 @@ public class GoogleApiUtil {
      * https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit
      */
     public static void main(String... args) throws IOException, GeneralSecurityException {
-        // Build a new authorized API client service.
-//        final NetHttpTransport HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
-//        final String spreadsheetId = "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms";
-//        final String range = "Class Data!A2:E";
-//        Sheets service =
-//                new Sheets.Builder(HTTP_TRANSPORT, JSON_FACTORY, getCredentials(HTTP_TRANSPORT))
-//                        .setApplicationName(APPLICATION_NAME)
-//                        .build();
-//        ValueRange response = service.spreadsheets().values()
-//                .get(spreadsheetId, range)
-//                .execute();
-//        List<List<Object>> values = response.getValues();
-//        if (values == null || values.isEmpty()) {
-//            System.out.println("No data found.");
-//        } else {
-//            System.out.println("Name, Major");
-//            for (List row : values) {
-//                // Print columns A and E, which correspond to indices 0 and 4.
-//                System.out.printf("%s, %s\n", row.get(0), row.get(4));
-//            }
-//        }
-
 
         GoogleApiUtil googleApiUtil = new GoogleApiUtil();
         googleApiUtil.getDataFromSheet("1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms","Class Data!A2:F15");
