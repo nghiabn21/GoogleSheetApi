@@ -18,11 +18,13 @@ import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.client.util.store.DataStore;
 import com.google.api.client.util.store.FileDataStoreFactory;
+import com.google.api.services.drive.model.FileList;
 import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.SheetsScopes;
 import com.google.api.services.sheets.v4.model.*;
 import org.springframework.stereotype.Component;
-
+import com.google.api.services.drive.Drive;
+import com.google.api.services.drive.DriveScopes;
 import java.io.*;
 import java.security.GeneralSecurityException;
 import java.util.*;
@@ -55,6 +57,20 @@ public class GoogleApiUtil {
             throw new RuntimeException(e);
         }
     }
+
+//    public static Drive getDriveService() throws Exception {
+//        final NetHttpTransport HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
+//        GoogleClientSecrets clientSecrets = GoogleClientSecrets.load(JSON_FACTORY,
+//                new InputStreamReader(GoogleApiUtil.class.getResourceAsStream(CREDENTIALS_FILE_PATH)));
+//
+//        GoogleAuthorizationCodeFlow flow = new GoogleAuthorizationCodeFlow.Builder(
+//                HTTP_TRANSPORT, JSON_FACTORY, clientSecrets, Collections.singleton(DriveScopes.DRIVE_READONLY))
+//                .build();
+//
+//        return new Drive.Builder(HTTP_TRANSPORT, JSON_FACTORY, flow.loadCredential("user"))
+//                .setApplicationName(APPLICATION_NAME)
+//                .build();
+//    }
 
     /**
      * Creates an authorized Credential object.
@@ -132,17 +148,28 @@ public class GoogleApiUtil {
         return personInfos;
     }
 
+    public List<com.google.api.services.drive.model.File> getGoogleSheets() throws Exception {
+        Drive service = getDriveService();
+
+        FileList result = service.files().list()
+                .setQ("mimeType='application/vnd.google-apps.spreadsheet'")
+                .setFields("files(id, name, owners, createdTime)")
+                .execute();
+
+        return result.getFiles();
+    }
+
     private Sheets getSheetService() throws GeneralSecurityException, IOException {
         final NetHttpTransport httpTransport = GoogleNetHttpTransport.newTrustedTransport();
         return new Sheets.Builder(httpTransport, JSON_FACTORY, getCredentials(httpTransport))
                 .setApplicationName(APPLICATION_NAME).build();
     }
 
-//    private Drive getDriveService() throws GeneralSecurityException, IOException {
-//        final NetHttpTransport httpTransport = GoogleNetHttpTransport.newTrustedTransport();
-//        return new Drive.Builder(httpTransport, JSON_FACTORY, getCredentials(httpTransport))
-//                .setApplicationName(APPLICATION_NAME).build();
-//    }
+    private Drive getDriveService() throws GeneralSecurityException, IOException {
+        final NetHttpTransport httpTransport = GoogleNetHttpTransport.newTrustedTransport();
+        return new Drive.Builder(httpTransport, JSON_FACTORY, getCredentials(httpTransport))
+                .setApplicationName(APPLICATION_NAME).build();
+    }
 
     public GoogleSheetResponseDTO createGoogleSheet(GoogleSheetDTO request)
             throws GeneralSecurityException, IOException {
@@ -282,10 +309,11 @@ public class GoogleApiUtil {
      * Prints the names and majors of students in a sample spreadsheet:
      * https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit
      */
-    public static void main(String... args) throws IOException, GeneralSecurityException {
+    public static void main(String... args) throws Exception {
 
         GoogleApiUtil googleApiUtil = new GoogleApiUtil();
-        googleApiUtil.getDataFromSheet("1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms","Class Data!A2:F15");
+        googleApiUtil.getGoogleSheets();
+//        googleApiUtil.getDataFromSheet("1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms","Class Data!A2:F15");
 //        googleApiUtil.createNewSheet("","Sheet 2");
           // ghi dữ liệu vào sheet đã có data
 //        writeDataGoogleSheets(service,"Sheet 3", new ArrayList<>(Arrays.asList("Test1", "Test2", "Test3")),"");
