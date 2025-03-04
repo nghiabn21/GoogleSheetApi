@@ -7,22 +7,22 @@
 </head>
 <body>
 <h1>Category List</h1>
-<a th:href="@{/addCategories}">Add Category</a>
+<!--<a th:href="@{/getSheets}">Add Category</a>-->
 <br/><br/>
 <div>
     <table border="1">
+        <thead>
         <tr>
-            <th>Name</th>
-            <th>Phone</th>
-            <th>Email</th>
-            <th>Address</th>
+            <th th:each="category : ${titleInfo}" th:text="${category.getTitle()}"></th>
         </tr>
+        </thead>
+        <tbody>
         <tr th:each="category : ${categories}">
-            <td th:text="${category.name}"></td>
-            <td th:text="${category.phone}"></td>
-            <td th:text="${category.email}"></td>
-            <td th:text="${category.address}"></td>
+            <!-- Lặp qua từng ô trong hàng -->
+            <td th:each="cell : ${category}" th:text="${cell}"></td>
         </tr>
+        </tbody>
+
     </table>
 </div>
 </body>

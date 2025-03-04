@@ -1,0 +1,34 @@
+<!DOCTYPE HTML>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <title>GOOGLE SHEET INFO</title>
+    <link rel="stylesheet"  th:href="@{/style.css}"/>
+</head>
+<body>
+<h1>GOOGLE SHEET INFO</h1>
+<a th:href="@{/}">HOME</a>
+<br/><br/>
+<div>
+    <table class="content-table">
+        <thead>
+        <tr>
+            <th>File name</th>
+            <th>Spreed Sheet Id</th>
+            <th>Date</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr th:each="category : ${googleInfo}">
+            <td th:text="${category.getFileName()}"></td>
+            <td>
+                <a th:href="@{/details(spreadsheetId=${category.getSpreadsheetId()})}"
+                   th:text="${category.getSpreadsheetId()}"></a>
+            </td>
+            <td th:text="${category.getDate()}"></td>
+        </tr>
+        </tbody>
+    </table>
+</div>
+</body>
+</html>

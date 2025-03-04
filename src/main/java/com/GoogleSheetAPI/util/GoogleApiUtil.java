@@ -1,8 +1,10 @@
 package com.GoogleSheetAPI.util;
 
 
+import com.GoogleSheetAPI.dto.FileInfo;
 import com.GoogleSheetAPI.dto.GoogleSheetDTO;
 import com.GoogleSheetAPI.dto.GoogleSheetResponseDTO;
+import com.GoogleSheetAPI.dto.TitleInfo;
 import com.GoogleSheetAPI.entity.PersonInfo;
 import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.auth.oauth2.StoredCredential;
@@ -16,8 +18,10 @@ import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.gson.GsonFactory;
+import com.google.api.client.util.DateTime;
 import com.google.api.client.util.store.DataStore;
 import com.google.api.client.util.store.FileDataStoreFactory;
+import com.google.api.services.drive.model.File;
 import com.google.api.services.drive.model.FileList;
 import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.SheetsScopes;
@@ -25,11 +29,21 @@ import com.google.api.services.sheets.v4.model.*;
 import org.springframework.stereotype.Component;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.DriveScopes;
-import java.io.*;
+
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.security.GeneralSecurityException;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.logging.LogManager;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 @Component
 public class GoogleApiUtil {
@@ -100,7 +114,7 @@ public class GoogleApiUtil {
                 .build();
         LocalServerReceiver receiver = new LocalServerReceiver.Builder().setPort(8888).build();
 
-        FileDataStoreFactory dataStoreFactory = new FileDataStoreFactory(new File(TOKENS_DIRECTORY_PATH));
+        FileDataStoreFactory dataStoreFactory = new FileDataStoreFactory(new java.io.File(TOKENS_DIRECTORY_PATH));
         DataStore<StoredCredential> dataStore = dataStoreFactory.getDataStore("StoredCredential");
 
         // Lấy Credential từ bộ nhớ
@@ -118,45 +132,118 @@ public class GoogleApiUtil {
         return new AuthorizationCodeInstalledApp(flow, receiver).authorize("user");
     }
 
-    public List<PersonInfo> getDataFromSheet(String spreadsheetId, String range){
-        Map<Object, Object> storeDataFromGoogleSheet = null;
-        List<PersonInfo> personInfos = new ArrayList<>();
+    public List<TitleInfo> getTitleSheet(String spreadsheetId, String range){
+        List<TitleInfo> titleInfos = new ArrayList<>();
+        String firstSheetName = "";
         try {
             Sheets service = getSheetService();
+            Spreadsheet spreadsheet = service.spreadsheets().get(spreadsheetId).execute();
+            // Lấy danh sách các sheet
+            List<Sheet> sheets = spreadsheet.getSheets();
+            // Kiểm tra nếu có ít nhất một sheet
+            if (sheets != null && !sheets.isEmpty()) {
+                SheetProperties firstSheet = sheets.get(0).getProperties();
+                firstSheetName = firstSheet.getTitle();
+            } else {
+                System.out.println("Không có sheet nào trong spreadsheet.");
+                throw new RuntimeException("Error getting data from Google Sheets API");
+            }
+            firstSheetName = firstSheetName + "!A1:1";
             // https://sheets.googleapis.com/v4/spreadsheets/{spreadsheetId}/values/{range}
-            ValueRange response = service.spreadsheets().values().get(spreadsheetId, range).execute();
+            ValueRange responseTitle = service.spreadsheets().values().get(spreadsheetId, firstSheetName).execute();
+
+            List<List<Object>> valuesTitle = responseTitle.getValues();
+
+            if (valuesTitle != null && !valuesTitle.isEmpty()) {
+                List<Object> headers = valuesTitle.get(0); // Lấy hàng đầu tiên
+                for (Object header : headers) {
+                    TitleInfo titleInfo = new TitleInfo();
+                    titleInfo.setTitle((String) header);
+                    titleInfos.add(titleInfo);
+                }
+            } else {
+                TitleInfo titleInfo = new TitleInfo();
+                titleInfo.setTitle("Không tìm thấy dữ liệu.");
+                titleInfos.add(titleInfo);
+            }
+        }catch (Exception e){
+            LOGGER.info("Error getting data from Google Sheets API");
+            throw new RuntimeException("Error getting data from Google Sheets API: " + e.getMessage());
+        }
+        return titleInfos;
+    }
+
+    public List<List<String>> getDataFromSheet(String spreadsheetId, String range){
+        List<PersonInfo> personInfos = new ArrayList<>();
+        List<List<String>> dataList = new ArrayList<>();
+        SheetProperties properties = null ;
+        String firstSheetName = null ;
+        try {
+            Sheets service = getSheetService();
+
+            // Lấy thông tin về toàn bộ spreadsheet
+            // https://sheets.googleapis.com/v4/spreadsheets/{spreadsheetId}/values/{range}
+            Spreadsheet spreadsheet = service.spreadsheets().get(spreadsheetId).execute();
+            // Lấy danh sách các sheet
+            List<Sheet> sheets = spreadsheet.getSheets();
+            // Kiểm tra nếu có ít nhất một sheet
+            if (sheets != null && !sheets.isEmpty()) {
+                SheetProperties firstSheet = sheets.get(0).getProperties();
+                firstSheetName = firstSheet.getTitle();
+            } else {
+                System.out.println("Không có sheet nào trong spreadsheet.");
+                throw new RuntimeException("Error getting data from Google Sheets API");
+            }
+            firstSheetName = firstSheetName + "!A2:F";
+            ValueRange response = service.spreadsheets().values().get(spreadsheetId, firstSheetName).execute();
             List<List<Object>> values = response.getValues();
-            storeDataFromGoogleSheet = new HashMap<>();
             if (values == null || values.isEmpty()) {
                 LOGGER.info("No data found.");
                 throw new RuntimeException("No data found.");
             } else {
-                for (List row : values) {
-                    PersonInfo personInfo = PersonInfo.builder()
-                            .name((String) row.get(0))
-                            .phone((String)row.get(1))
-                            .email((String)row.get(2))
-                            .address((String)row.get(3))
-                            .build();
-                    personInfos.add(personInfo);
+                // Duyệt qua từng hàng dữ liệu từ hàng 2 trở đi (bỏ tiêu đề)
+                for (int i = 0 ; i < values.size(); i++) {
+                    List<Object> row = values.get(i);
+                    List<String> rowData = row.stream()
+                            .map(Object::toString)
+                            .collect(Collectors.toList());
+                    dataList.add(rowData);
                 }
             }
         }catch (Exception e){
             LOGGER.info("Error getting data from Google Sheets API");
             throw new RuntimeException("Error getting data from Google Sheets API: " + e.getMessage());
         }
-        return personInfos;
+        return dataList;
     }
 
-    public List<com.google.api.services.drive.model.File> getGoogleSheets() throws Exception {
+    public List<FileInfo> getGoogleSheets() throws Exception {
         Drive service = getDriveService();
+        List<FileInfo> fileInfos = new ArrayList<>();
 
         FileList result = service.files().list()
                 .setQ("mimeType='application/vnd.google-apps.spreadsheet'")
-                .setFields("files(id, name, owners, createdTime)")
+                .setFields("files(id, name, createdTime)") // id, name, owners, createdTime
                 .execute();
 
-        return result.getFiles();
+        for(File file : result.getFiles()) {
+            FileInfo fileInfo  = new FileInfo();
+            fileInfo.setFileName(file.getName());
+            fileInfo.setSpreadsheetId(file.getId());
+
+            // Chuyển DateTime thành Instant
+            Instant instant = Instant.ofEpochMilli(file.getCreatedTime().getValue());
+            // Chuyển đổi sang LocalDateTime với múi giờ hệ thống
+            LocalDateTime localDateTime = LocalDateTime.ofInstant(instant, ZoneId.systemDefault());
+            // Định dạng lại thành "yyyy-MM-dd HH:mm"
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+            String formattedDate = localDateTime.format(formatter);
+            fileInfo.setDate(formattedDate);
+
+            fileInfos.add(fileInfo);
+        }
+
+        return fileInfos;
     }
 
     private Sheets getSheetService() throws GeneralSecurityException, IOException {
@@ -312,8 +399,8 @@ public class GoogleApiUtil {
     public static void main(String... args) throws Exception {
 
         GoogleApiUtil googleApiUtil = new GoogleApiUtil();
-        googleApiUtil.getGoogleSheets();
-//        googleApiUtil.getDataFromSheet("1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms","Class Data!A2:F15");
+//        googleApiUtil.getGoogleSheets();
+        googleApiUtil.getDataFromSheet("1M4q1sPgfwR3wBXWa8ZJL3-aCcHBEcZRyKXKdrLi-6hE","Class Data!A2:Z");
 //        googleApiUtil.createNewSheet("","Sheet 2");
           // ghi dữ liệu vào sheet đã có data
 //        writeDataGoogleSheets(service,"Sheet 3", new ArrayList<>(Arrays.asList("Test1", "Test2", "Test3")),"");

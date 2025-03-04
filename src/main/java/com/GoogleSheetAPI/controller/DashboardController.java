@@ -26,11 +26,20 @@ public class DashboardController {
 		return "web";
 	}
 
-	@RequestMapping(value = {"/categoriesList"}, method = RequestMethod.GET)
-	public String categoriesList(Model model) {
+	@GetMapping("/details")
+	public String categoriesList(@RequestParam String spreadsheetId , Model model) {
 		model.addAttribute("categories",
-				googleApiService.readDataFromGoogleSheet("1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms","Class Data!A2:F15"));
+				googleApiService.readDataFromGoogleSheet(spreadsheetId,"Class Data!A2:F"));
+		model.addAttribute("titleInfo",
+				googleApiService.getTitleSheet(spreadsheetId,"Class Data!A1:Z1"));
 		return "List";
+	}
+
+	@GetMapping("/getSheets")
+	public String getSheets(Model model) throws Exception {
+		model.addAttribute("googleInfo", googleApiService.getGoogleSheets());
+		return "google-info";
+
 	}
 
 //	@GetMapping("/getData")
